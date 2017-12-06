@@ -2,20 +2,18 @@
 ￼
 !\end{comment}
 !\begin{sourcecode}
-subroutine fg_bump(p,      & ! 
-                        eps,     & !
-                        p0,     & !
-                        q0,     & !
-                        q0freq, & !
-                        J,      & !
-                        gp,     & !
-                        n1pow2, & !
-                        n2pow2, & !
-                        n1,     & !
+subroutine fg_bump(     p,      & ! modelled data
+                        eps,     & ! thresholding parameter for computing absolute value
+                        p0,     & ! observed data
+                        q0,     & ! 
+                        q0freq, & ! ga ussian filter in the frequency doimain
+                        J,      & ! misfit
+                        gp,     & ! gradient of J w.r.t. p
+                        n1pow2, & ! # length after zero padding
+                        n2pow2, & ! # length after zero padding
+                        n1,     & ! # lengths before zero padding
                         n2,     & !
                         n3,     & !    
-                        saved,  & !
-                        i3save  & !
                         ) !\end{sourcecode}
 !\begin{comment}
 implicit none
@@ -49,7 +47,7 @@ allocate(temp1D(n1))
 ! other temp for gradient
 allocate(dJdpbump(n1pow2, n2pow2))
 
-! loop over sources
+! loop over sources (can be parallized)
 do i3 = 1, n3
         ! initialize f-k domain
         p0bump = cmplx(rzero_de, rzero_de)
@@ -63,6 +61,8 @@ do i3 = 1, n3
                 ! absolute value of the observed and modeled data
                 ! after applying weighting q0
                 temp1D = q0(ap1:ap2) * sqrt((p0(ap1:ap2))**2 + eps);
+                
+                ! zero padding and truncating function
                 call nlag_npow2_pad_truncate(x = temp1D, &
                          xpow2_complex = p0bump(:,i2), nplags = n1-1, nnlags = 0,&
                         npow2 = n1pow2, flag = 1)
@@ -112,35 +112,7 @@ do i3 = 1, n3
                 enddo
         enddo
 
-        if(i3 .eq. i3save) then
-                ! p
-                saved(n1*n2+1:2*n1*n2) = p(n1*n2*(i3save-1)+1:n1*n2*i3save)
 
-                ! p0
-                saved(1:n1*n2) = p0(n1*n2*(i3save-1)+1:n1*n2*i3save)
-
-                ! pbump
-                allocate(temp2dcomplex(n1pow2, n2pow2))
-                forall(i2=1:n2pow2,i1=1:n1pow2)
-                        temp2dcomplex(i1,i2) =  pbump(i1,i2) * &
-                        cmplx(q0freq(i1 + (i2-1)*n1pow2), rzero_de)
-                endforall
-                call cfft2_fftw(temp2dcomplex, n1pow2, n2pow2, -1)
-                saved(3*n1*n2+1:4*n1*n2) = pack(real(temp2dcomplex(1:n1,1:n2)),.true.)
-                
-                ! p0bump
-                forall(i2=1:n2pow2,i1=1:n1pow2)
-                        temp2dcomplex(i1,i2) =  p0bump(i1,i2) * &
-                        cmplx(q0freq(i1 + (i2-1)*n1pow2), rzero_de)
-                endforall
-                call cfft2_fftw(temp2dcomplex, n1pow2, n2pow2, -1)
-                saved(2*n1*n2+1:3*n1*n2) = pack(real(temp2dcomplex(1:n1,1:n2)),.true.)
-                deallocate(temp2dcomplex)
-
-                ! gp
-                saved(4*n1*n2+1:5*n1*n2) = gp(n1*n2*(i3save-1)+1:n1*n2*i3save)
-
-        endif
 enddo
 if(allocated(temp1D)) deallocate(temp1D)
 deallocate(pbump, p0bump)
